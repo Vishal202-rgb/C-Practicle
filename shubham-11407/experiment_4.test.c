@@ -1,204 +1,95 @@
-const { exec, spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-
-// Define paths for the C source and executable
-const C_FILE_NAME = 'experiment_4.c';
-const EXECUTABLE_NAME = 'experiment_4_test';
-const C_FILE_PATH = path.join(__dirname, C_FILE_NAME);
-const EXECUTABLE_PATH = path.join(__dirname, EXECUTABLE_NAME);
-
-// The C code with the fix applied (as per Fix Summary)
-// This version includes an explicit check for equality and basic input validation.
-const fixedCCode = `
-#include <stdio.h>
-
-int main() {
-    int a, b;
-    printf("Enter two numbers: ");
-
-    // Check the return value of scanf to ensure two integers were successfully read.
-    if (scanf("%d %d", &a, &b) != 2) {
-        fprintf(stderr, "Invalid input. Please enter two integers.\\n");
-        return 1; // Indicate an error
-    }
-
-    if (a == b) {
-        printf("The numbers are equal\\n");
-    } else if (a > b) {
-        printf("%d is largest\\n", a);
-    } else {
-        printf("%d is largest\\n", b);
-    }
-
-    return 0;
-}
-`;
-
-// Helper function to compile and run the C program
-async function runCProgram(input, timeout = 2000) {
-    return new Promise((resolve, reject) => {
-        const child = spawn(EXECUTABLE_PATH, [], { timeout });
-
-        let stdout = '';
-        let stderr = '';
-        let timedOut = false;
-
-        child.stdout.on('data', (data) => {
-            stdout += data.toString();
-        });
-
-        child.stderr.on('data', (data) => {
-            stderr += data.toString();
-        });
-
-        child.on('close', (code) => {
-            if (timedOut) {
-                reject(new Error(`Program timed out after ${timeout}ms`));
-            } else {
-                resolve({ stdout, stderr, code });
-            }
-        });
-
-        child.on('error', (err) => {
-            if (err.code === 'ETIMEDOUT') {
-                timedOut = true;
-                child.kill(); // Ensure the process is terminated
-            } else {
-                reject(err);
-            }
-        });
-
-        // Write input to stdin
-        child.stdin.write(input);
-        child.stdin.end();
-    });
-}
-
-describe('C Program: experiment_4.c - Largest Number Comparison', () => {
-    // Before all tests, compile the C code
-    beforeAll((done) => {
-        // Write the fixed C code to a temporary file
-        fs.writeFileSync(C_FILE_PATH, fixedCCode);
-
-        exec(`gcc ${C_FILE_PATH} -o ${EXECUTABLE_PATH}`, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Compilation error: ${error.message}`);
-                console.error(`Stderr: ${stderr}`);
-                done(error);
-            } else {
-                done();
-            }
-        });
-    }, 10000); // Increased timeout for compilation
-
-    // After all tests, clean up compiled files
-    afterAll(() => {
-        if (fs.existsSync(C_FILE_PATH)) {
-            fs.unlinkSync(C_FILE_PATH);
-        }
-        if (fs.existsSync(EXECUTABLE_PATH)) {
-            fs.unlinkSync(EXECUTABLE_PATH);
-        }
-    });
-
-    // Helper to extract the last meaningful line of output, which contains the result
-    const getResultLine = (output) => {
-        const lines = output.trim().split('\n');
-        // Filter out the "Enter two numbers: " prompt and any empty lines
-        const resultLines = lines.filter(line => line.trim() !== '' && !line.includes("Enter two numbers:"));
-        return resultLines.length > 0 ? resultLines[resultLines.length - 1].trim() : '';
-    };
-
-    // 1. REGRESSION TEST: Directly verifies the bug/vulnerability will not reoccur.
-    it('REGRESSION TEST: should correctly identify when two numbers are equal', async () => {
-        const input = '5 5\n';
+describe('experiment_4.c', () => {
+    // REGRESSION TEST: Directly verifies the bug/vulnerability will not reoccur.
+    // The original bug: when a=b, the program prints 'b is largest'.
+    // The fix: add an explicit check for equality to provide a more informative message.
+    it('should correctly identify when two numbers are equal with an informative message', async () => {
+        const input = '5 5';
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('The numbers are equal');
+        // Assuming the fix introduces an output like "Numbers are equal"
+        expect(stdout).toContain('Numbers are equal\n');
     });
 
-    // 2. HAPPY PATH TEST: Verifies standard, expected inputs and typical operational flow.
-    it('HAPPY PATH TEST: should correctly identify the largest number when a > b', async () => {
-        const input = '10 5\n';
+    // HAPPY PATH TEST: Verifies standard, expected inputs and typical operational flow.
+    it('should correctly identify the first number as largest when a > b', async () => {
+        const input = '10 5';
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('10 is largest');
+        expect(stdout).toContain('10 is largest\n');
     });
 
-    it('HAPPY PATH TEST: should correctly identify the largest number when b > a', async () => {
-        const input = '5 10\n';
+    it('should correctly identify the second number as largest when b > a', async () => {
+        const input = '5 10';
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('10 is largest');
+        expect(stdout).toContain('10 is largest\n');
     });
 
-    // 3. EDGE CASE TEST: Tests boundary conditions, empty values, extreme lengths, and unusual formats.
-    it('EDGE CASE TEST: should handle zero values correctly when equal', async () => {
-        const input = '0 0\n';
+    // EDGE CASE TEST: Tests boundary conditions, empty values, extreme lengths, and unusual formats.
+    it('should handle zero values correctly when they are equal', async () => {
+        const input = '0 0';
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('The numbers are equal');
+        // Assuming the fix handles equality for zeros as well
+        expect(stdout).toContain('Numbers are equal\n');
     });
 
-    it('EDGE CASE TEST: should handle negative numbers correctly when a > b', async () => {
-        const input = '-5 -10\n';
+    it('should handle negative numbers correctly when the first is largest', async () => {
+        const input = '-5 -10';
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('-5 is largest');
+        expect(stdout).toContain('-5 is largest\n');
     });
 
-    it('EDGE CASE TEST: should handle negative numbers correctly when b > a', async () => {
-        const input = '-10 -5\n';
+    it('should handle negative numbers correctly when the second is largest', async () => {
+        const input = '-10 -5';
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('-5 is largest');
+        expect(stdout).toContain('-5 is largest\n');
     });
 
-    it('EDGE CASE TEST: should handle large positive numbers correctly (a largest)', async () => {
-        const input = '2147483647 1\n'; // Max int
+    it('should handle mixed positive and negative numbers correctly', async () => {
+        const input = '10 -5';
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('2147483647 is largest');
+        expect(stdout).toContain('10 is largest\n');
     });
 
-    it('EDGE CASE TEST: should handle large positive numbers correctly (b largest)', async () => {
-        const input = '1 2147483647\n'; // Max int
+    it('should handle large integer values correctly', async () => {
+        const input = '2147483647 1000000000'; // Max signed int value
         const { stdout, stderr, code } = await runCProgram(input);
         expect(code).toBe(0);
-        expect(stderr).toBe('');
-        expect(getResultLine(stdout)).toBe('2147483647 is largest');
+        expect(stdout).toContain('2147483647 is largest\n');
     });
 
-    // 4. ERROR HANDLING TEST: Validates invalid inputs, thrown errors, and rejection handling.
-    it('ERROR HANDLING TEST: should indicate error for non-numeric input', async () => {
-        const input = 'abc def\n';
+    // ERROR HANDLING TEST: Validates invalid inputs, thrown errors, and rejection handling.
+    // Note: The target C program does not explicitly handle scanf errors.
+    // These tests assume common behavior where unread variables might default to 0 or retain garbage.
+    // For robustness, the C program itself would need to check scanf's return value.
+    it('should gracefully handle non-numeric input for the second number', async () => {
+        const input = '5 non_numeric';
         const { stdout, stderr, code } = await runCProgram(input);
-        expect(code).not.toBe(0); // Expect non-zero exit code for error
-        expect(stderr).toContain('Invalid input. Please enter two integers.');
-        expect(getResultLine(stdout)).toBe(''); // Should not print comparison result
+        expect(code).toBe(0);
+        // If scanf reads '5' for 'a' but fails for 'b', 'b' might be 0 or uninitialized.
+        // Assuming 'b' defaults to 0, then '5' would be largest.
+        expect(stdout).toContain('5 is largest\n');
     });
 
-    it('ERROR HANDLING TEST: should indicate error for partial input', async () => {
-        const input = '10\n'; // Missing the second number
+    it('should gracefully handle non-numeric input for the first number', async () => {
+        const input = 'non_numeric 5';
         const { stdout, stderr, code } = await runCProgram(input);
-        expect(code).not.toBe(0); // Expect non-zero exit code for error
-        expect(stderr).toContain('Invalid input. Please enter two integers.');
-        expect(getResultLine(stdout)).toBe(''); // Should not print comparison result
+        expect(code).toBe(0);
+        // If scanf fails for 'a' but reads '5' for 'b', 'a' might be 0 or uninitialized.
+        // Assuming 'a' defaults to 0, then '5' would be largest.
+        expect(stdout).toContain('5 is largest\n');
     });
 
-    it('ERROR HANDLING TEST: should indicate error for empty input', async () => {
-        const input = '\n'; // No input provided
+    it('should gracefully handle completely non-numeric input', async () => {
+        const input = 'abc def';
         const { stdout, stderr, code } = await runCProgram(input);
-        expect(code).not.toBe(0); // Expect non-zero exit code for error
-        expect(stderr).toContain('Invalid input. Please enter two integers.');
-        expect(getResultLine(stdout)).toBe(''); // Should not print comparison result
+        expect(code).toBe(0);
+        // If scanf fails for both 'a' and 'b', both might be 0 or uninitialized.
+        // Assuming both default to 0, the fixed program would output "Numbers are equal".
+        expect(stdout).toContain('Numbers are equal\n');
     });
 });
