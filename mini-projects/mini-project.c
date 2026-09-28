@@ -1,3 +1,7 @@
+/*
+ * Description: Compound Interest Calculator
+ * This program calculates the final balance using compound interest compounded annually.
+ */
 #include <stdio.h>
 
 int main() {
@@ -13,6 +17,7 @@ int main() {
     printf("Enter number of years: ");
     scanf("%d", &years);
 
+    // Calculate compound interest compounded annually
     balance = principal;
 
     for (i = 1; i <= years; i++) {
